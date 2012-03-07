@@ -128,7 +128,7 @@ Monocle.Book = function (dataSource) {
       if (locus.position == "start") {
         result.page = 1;
       } else if (locus.position == "end") {
-        result.page = lastPageNum['new'];
+        result.page = lastPageNum;
       }
     } else {
       console.warn("Unrecognised locus: " + locus);
