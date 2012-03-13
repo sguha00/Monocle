@@ -10,6 +10,8 @@ More information (including demos): http://monocle.inventivelabs.com.au
 Contributions welcome - fork the repository on
 [GitHub](http://github.com/joseph/monocle).
 
+Demos: http://sguha00.github.com/Monocle/test
+
 
 ## Getting Monocle
 
