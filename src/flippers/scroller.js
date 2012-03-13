@@ -71,8 +71,8 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
       Monocle.defer(turned);
     } else if (Monocle.Browser.env.supportsTransition) {
       // Native animation.
-      dims.translateToLocus(locus, p.duration+"ms ease-in 0ms");
       Monocle.Events.afterTransition(bdy, turned);
+      dims.translateToLocus(locus, p.duration+"ms ease-in 0ms");
     } else {
       // Old-school JS animation.
       var x = dims.locusToOffset(locus);
@@ -119,7 +119,7 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
   return API;
 }
 
-Monocle.Flippers.Scroller.speed = 100; // How long the animation takes
+Monocle.Flippers.Scroller.speed = 200; // How long the animation takes
 Monocle.Flippers.Scroller.rate = 20; // frame-rate of the animation
 Monocle.Flippers.Scroller.FORWARDS = 1;
 Monocle.Flippers.Scroller.BACKWARDS = -1;
