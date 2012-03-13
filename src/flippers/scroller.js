@@ -71,7 +71,7 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
       Monocle.defer(turned);
     } else if (Monocle.Browser.env.supportsTransition) {
       // Native animation.
-      Monocle.Events.afterTransition(bdy, turned);
+      Monocle.defer(turned, p.duration);
       dims.translateToLocus(locus, p.duration+"ms ease-in 0ms");
     } else {
       // Old-school JS animation.
