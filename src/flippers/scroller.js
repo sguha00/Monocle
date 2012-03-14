@@ -49,6 +49,7 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
 
 
   function moveTo(locus, callback) {
+    p.turning = true;
     var fn = frameToLocus;
     if (typeof callback == "function") {
       fn = function (locus) { frameToLocus(locus); callback(locus); }
@@ -59,7 +60,6 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
 
   function frameToLocus(locus) {
     if (locus.boundarystart || locus.boundaryend) { return; }
-    p.turning = true;
     var dims = page().m.dimensions;
     var fr = page().m.activeFrame;
     var bdy = fr.contentDocument.body;
