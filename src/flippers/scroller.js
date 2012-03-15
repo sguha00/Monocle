@@ -59,7 +59,10 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
 
 
   function frameToLocus(locus) {
-    if (locus.boundarystart || locus.boundaryend) { return; }
+    if (locus.boundarystart || locus.boundaryend) { 
+      p.turning = false; 
+      return; 
+    }
     var dims = page().m.dimensions;
     var fr = page().m.activeFrame;
     var bdy = fr.contentDocument.body;
