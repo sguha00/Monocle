@@ -39,7 +39,14 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
 
   function turn(dir) {
     if (p.turning) { return; }
-    moveTo({ page: getPlace().pageNumber() + dir});
+    var callback = function(locus) {
+      if (dir == Monocle.Flippers.Scroller.FORWARDS) {
+        p.reader.dispatchEvent('monocle:turning:forwards');
+      } else {
+        p.reader.dispatchEvent('monocle:turning:backwards');
+      }
+    }
+    moveTo({ page: getPlace().pageNumber() + dir}, callback);
   }
 
 
