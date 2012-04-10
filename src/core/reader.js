@@ -771,8 +771,8 @@ Monocle.Reader.DEFAULT_STYLE_RULES = [
     "max-width: 100% !important;" +
   "}",
   "html#RS\\:monocle img, html#RS\\:monocle video, html#RS\\:monocle object {" +
-    "max-height: 95% !important;" +
-    "height: auto !important;" +
+    "max-height: 95%;" +
+    "height: auto;" +
   "}"
 ]
 
