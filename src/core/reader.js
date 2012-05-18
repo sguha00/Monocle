@@ -318,7 +318,7 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
     var place, locus;
     if (andRestorePlace !== false) {
       var place = getPlace();
-      var locus = { percent: place ? place.percentAtTopOfPage() : 0 };
+      var locus = { percent: place ? place.percentageThrough() : 0 };
     }
 
     // Better to use an event? Or chaining consecutively?

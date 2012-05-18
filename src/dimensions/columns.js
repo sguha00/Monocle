@@ -127,7 +127,7 @@ Monocle.Dimensions.Columns = function (pageDiv) {
     if (transition) {
       Monocle.Styles.affix(ce, "transition", transition);
     }
-    Monocle.Styles.affix(ce, "transform", "translateX(-"+offset+"px)");
+    Monocle.Styles.affix(ce, "transform", "translate3d(-"+offset+"px, 0, 0)");
   }
 
 
