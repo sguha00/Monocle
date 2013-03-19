@@ -24,7 +24,7 @@ Monocle.DEBUG = true;
       ],
       metadata: { title: "Lorem Ipsum", creator: "Mr Monocle" }
     });
-    var options = { panels: Monocle.Panels.IMode }
+    var options = { flipper: Monocle.Flippers.Scroller };
     Monocle.Reader('reader', bookData, options, function (rdr) {
       window.reader = rdr;
       alertIfComponentNotFound(rdr);
