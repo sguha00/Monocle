@@ -646,33 +646,6 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
 Monocle.Reader.RESIZE_DELAY = Monocle.Browser.renders.slow ? 500 : 100;
 Monocle.Reader.DEFAULT_SYSTEM_ID = 'RS:monocle'
 Monocle.Reader.DEFAULT_CLASS_PREFIX = 'monelem_'
-<<<<<<< HEAD
-Monocle.Reader.DEFAULT_STYLE_RULES = [
-  "html#RS\\:monocle * {" +
-    "-webkit-font-smoothing: subpixel-antialiased;" +
-    "text-rendering: auto !important;" +
-    "word-wrap: break-word !important;" +
-    "overflow: visible !important;" +
-  "}",
-  "html#RS\\:monocle body {" +
-    "margin: 0 !important;"+
-    "border: none !important;" +
-    "padding: 0 !important;" +
-    "width: 100% !important;" +
-    "position: absolute !important;" +
-    "-webkit-text-size-adjust: none;" +
-  "}",
-  "html#RS\\:monocle body * {" +
-    "max-width: 100% !important;" +
-  "}",
-  "html#RS\\:monocle img, html#RS\\:monocle video, html#RS\\:monocle object {" +
-    "max-height: 95%;" +
-    "height: auto;" +
-  "}"
-]
-
-Monocle.pieceLoaded('core/reader');
-=======
 Monocle.Reader.DEFAULT_STYLE_RULES = Monocle.Formatting.DEFAULT_STYLE_RULES;
 Monocle.Reader.COMPATIBILITY_INFO =
   "<h1>Incompatible browser</h1>"+
@@ -682,4 +655,3 @@ Monocle.Reader.LOAD_FAILURE_INFO =
   "<h1>Book could not be loaded</h1>"+
   "<p>Sorry, parts of the book could not be retrieved.<br />"+
   "Please check your connection and refresh to try again.</p>";
->>>>>>> upstream/master
