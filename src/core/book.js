@@ -6,16 +6,15 @@
  * and for calculating which component and page number to move to (based on
  * requests from the Reader).
  *
- * It should set and know the place of each page element too.
- *
  */
-Monocle.Book = function (dataSource) {
-  if (Monocle == this) { return new Monocle.Book(dataSource); }
+Monocle.Book = function (dataSource, preloadWindow) {
 
   var API = { constructor: Monocle.Book }
   var k = API.constants = API.constructor;
   var p = API.properties = {
     dataSource: dataSource,
+    preloadWindow: preloadWindow,
+    cmptLoadQueue: {},
     components: [],
     chapters: {} // flat arrays of chapters per component
   }
@@ -40,7 +39,7 @@ Monocle.Book = function (dataSource) {
   //
   //  - page: positive integer. Counting up from the start of component.
   //  - pagesBack: negative integer. Counting back from the end of component.
-  //  - percent: float
+  //  - percent: float indicating percentage through the component
   //  - direction: integer relative to the current page number for this pageDiv
   //  - position: string, one of "start" or "end", moves to corresponding point
   //      in the given component
@@ -207,71 +206,53 @@ Monocle.Book = function (dataSource) {
   // As with setPageAt, if you call this you're obliged to move the frame
   // offset to the given page in the locus passed to the callback.
   //
-  // If you pass a function as the progressCallback argument, the logic of this
-  // function will be in your control. The function will be invoked between:
-  //
-  // a) loading the component and
-  // b) applying the component to the frame and
-  // c) loading any further components if required
-  //
-  // with a function argument that performs the next step in the process. So
-  // if you need to do some special handling during the load process, you can.
-  //
-  function loadPageAt(pageDiv, locus, callback, progressCallback) {
+  function loadPageAt(pageDiv, locus, onLoad, onFail) {
     var cIndex = p.componentIds.indexOf(locus.componentId);
     if (!locus.load || cIndex < 0) {
       locus = pageNumberAt(pageDiv, locus);
     }
 
     if (!locus) {
-      return;
+      return onFail ? onFail() : null;
     }
 
     if (!locus.load) {
-      callback(locus);
-      return;
+      return onLoad(locus);
     }
 
     var findPageNumber = function () {
       locus = setPageAt(pageDiv, locus);
       if (!locus) {
-        return;
+        return onFail ? onFail() : null;
       } else if (locus.load) {
-        loadPageAt(pageDiv, locus, callback, progressCallback)
+        loadPageAt(pageDiv, locus, onLoad, onFail)
       } else {
-        callback(locus);
+        onLoad(locus);
       }
     }
 
-    var pgFindPageNumber = function () {
-      progressCallback ? progressCallback(findPageNumber) : findPageNumber();
-    }
-
     var applyComponent = function (component) {
-      component.applyTo(pageDiv, pgFindPageNumber);
+      component.applyTo(pageDiv, findPageNumber);
+      for (var l = 1; l <= p.preloadWindow; ++l) {
+        deferredPreloadComponent(cIndex+l, l*k.PRELOAD_INTERVAL);
+      }
     }
 
-    var pgApplyComponent = function (component) {
-      progressCallback ?
-        progressCallback(function () { applyComponent(component) }) :
-        applyComponent(component);
-    }
-
-    loadComponent(cIndex, pgApplyComponent, pageDiv);
+    loadComponent(cIndex, applyComponent, onFail, pageDiv);
   }
 
 
   // If your flipper doesn't care whether a component needs to be
   // loaded before the page can be set, you can use this shortcut.
   //
-  function setOrLoadPageAt(pageDiv, locus, callback, onProgress, onFail) {
+  function setOrLoadPageAt(pageDiv, locus, onLoad, onFail) {
     locus = setPageAt(pageDiv, locus);
     if (!locus) {
       if (onFail) { onFail(); }
     } else if (locus.load) {
-      loadPageAt(pageDiv, locus, callback, onProgress);
+      loadPageAt(pageDiv, locus, onLoad, onFail);
     } else {
-      callback(locus);
+      onLoad(locus);
     }
   }
 
@@ -281,40 +262,68 @@ Monocle.Book = function (dataSource) {
   // 'index' is the index of the component in the
   // dataSource.getComponents array.
   //
-  // 'callback' is invoked when the source is received.
+  // 'onLoad' is invoked when the source is received.
+  //
+  // 'onFail' is optional, and is invoked if the source could not be fetched.
   //
   // 'pageDiv' is optional, and simply allows firing events on
   // the reader object that has requested this component, ONLY if
   // the source has not already been received.
   //
-  function loadComponent(index, callback, pageDiv) {
+  function loadComponent(index, onLoad, onFail, pageDiv) {
     if (p.components[index]) {
-      return callback(p.components[index]);
-    }
-    var cmptId = p.componentIds[index];
-    if (pageDiv) {
-      var evtData = { 'page': pageDiv, 'component': cmptId, 'index': index };
-      pageDiv.m.reader.dispatchEvent('monocle:componentloading', evtData);
-    }
-    var failedToLoadComponent = function () {
-      console.warn("Failed to load component: "+cmptId);
-      pageDiv.m.reader.dispatchEvent('monocle:componentfailed', evtData);
-      try {
-        var currCmpt = pageDiv.m.activeFrame.m.component;
-        evtData.cmptId = currCmpt.properties.id;
-        callback(currCmpt);
-      } catch (e) {
-        console.warn("Failed to fall back to previous component.");
-      }
+      return onLoad(p.components[index]);
     }
 
-    var fn = function (cmptSource) {
-      if (cmptSource === false) { return failedToLoadComponent(); }
-      if (pageDiv) {
-        evtData['source'] = cmptSource;
-        pageDiv.m.reader.dispatchEvent('monocle:componentloaded', evtData);
-        html = evtData['html'];
-      }
+    var cmptId = p.components[index];
+    var evtData = { 'page': pageDiv, 'component': cmptId, 'index': index };
+    pageDiv.m.reader.dispatchEvent('monocle:componentloading', evtData);
+
+    var onCmptLoad = function (cmpt) {
+      evtData['component'] = cmpt;
+      pageDiv.m.reader.dispatchEvent('monocle:componentloaded', evtData);
+      onLoad(cmpt);
+    }
+
+    var onCmptFail = function (cmptId) {
+      console.warn("Failed to load component: "+cmptId);
+      pageDiv.m.reader.dispatchEvent('monocle:componentfailed', evtData);
+      if (onFail) { onFail(); }
+    }
+
+    _loadComponent(index, onCmptLoad, onCmptFail);
+  }
+
+
+  function preloadComponent(index) {
+    if (p.components[index]) { return; }
+    var cmptId = p.componentIds[index];
+    if (!cmptId) { return; }
+    if (p.cmptLoadQueue[cmptId]) { return; }
+    _loadComponent(index);
+  }
+
+
+  function deferredPreloadComponent(index, delay) {
+    Monocle.defer(function () { preloadComponent(index); }, delay);
+  }
+
+
+  function _loadComponent(index, successCallback, failureCallback) {
+    var cmptId = p.componentIds[index];
+    var queueItem = { success: successCallback, failure: failureCallback };
+    if (p.cmptLoadQueue[cmptId]) {
+      return p.cmptLoadQueue[cmptId] = queueItem;
+    } else {
+      p.cmptLoadQueue[cmptId] = queueItem;
+    }
+
+    var onCmptFail = function () {
+      fireLoadQueue(cmptId, 'failure', cmptId);
+    }
+
+    var onCmptLoad = function (cmptSource) {
+      if (cmptSource === false) { return onCmptFail(); }
       p.components[index] = new Monocle.Component(
         API,
         cmptId,
@@ -322,14 +331,23 @@ Monocle.Book = function (dataSource) {
         chaptersForComponent(cmptId),
         cmptSource
       );
-      callback(p.components[index]);
+      fireLoadQueue(cmptId, 'success', p.components[index]);
     }
-    var cmptSource = p.dataSource.getComponent(cmptId, fn);
+
+    var cmptSource = p.dataSource.getComponent(cmptId, onCmptLoad);
     if (cmptSource && !p.components[index]) {
-      fn(cmptSource);
+      onCmptLoad(cmptSource);
     } else if (cmptSource === false) {
-      return failedToLoadComponent();
+      onCmptFail();
     }
+  }
+
+
+  function fireLoadQueue(cmptId, cbName, args) {
+    if (typeof p.cmptLoadQueue[cmptId][cbName] == 'function') {
+      p.cmptLoadQueue[cmptId][cbName](args);
+    }
+    p.cmptLoadQueue[cmptId] = null;
   }
 
 
@@ -351,10 +369,10 @@ Monocle.Book = function (dataSource) {
       return p.chapters[cmptId];
     }
     p.chapters[cmptId] = [];
-    var matcher = new RegExp('^'+cmptId+"(\#(.+)|$)");
+    var matcher = new RegExp('^'+decodeURIComponent(cmptId)+"(\#(.+)|$)");
     var matches;
     var recurser = function (chp) {
-      if (matches = chp.src.match(matcher)) {
+      if (matches = decodeURIComponent(chp.src).match(matcher)) {
         p.chapters[cmptId].push({
           title: chp.title,
           fragment: matches[2] || null
@@ -401,7 +419,25 @@ Monocle.Book = function (dataSource) {
 
 
   function componentIdMatching(str) {
-    return p.componentIds.indexOf(str) >= 0 ? str : null;
+    str = decodeURIComponent(str);
+    for (var i = 0, ii = p.componentIds.length; i < ii; ++i) {
+      if (decodeURIComponent(p.componentIds[i]) == str) { return str; }
+    }
+    return null;
+  }
+
+
+  function componentWeights() {
+    if (!p.weights) {
+      p.weights = dataSource.getMetaData('componentWeights') || [];
+      if (!p.weights.length) {
+        var cmptSize = 1.0 / p.componentIds.length;
+        for (var i = 0, ii = p.componentIds.length; i < ii; ++i) {
+          p.weights.push(cmptSize);
+        }
+      }
+    }
+    return p.weights;
   }
 
 
@@ -413,6 +449,7 @@ Monocle.Book = function (dataSource) {
   API.chaptersForComponent = chaptersForComponent;
   API.locusOfChapter = locusOfChapter;
   API.isValidLocus = isValidLocus;
+  API.componentWeights = componentWeights;
 
   initialize();
 
@@ -420,28 +457,11 @@ Monocle.Book = function (dataSource) {
 }
 
 
-// A shortcut for creating a book from an array of nodes.
-//
-// You could use this as follows, for eg:
-//
-//  Monocle.Book.fromNodes([document.getElementById('content')]);
+// Legacy function. Deprecated.
 //
 Monocle.Book.fromNodes = function (nodes) {
-  var bookData = {
-    getComponents: function () {
-      return ['anonymous'];
-    },
-    getContents: function () {
-      return [];
-    },
-    getComponent: function (n) {
-      return { 'nodes': nodes };
-    },
-    getMetaData: function (key) {
-    }
-  }
-
-  return new Monocle.Book(bookData);
+  console.deprecation("Book.fromNodes() will soon be removed.");
+  return new Monocle.Book(Monocle.bookDataFromNodes(nodes));
 }
 
-Monocle.pieceLoaded('core/book');
+Monocle.Book.PRELOAD_INTERVAL = 1000;

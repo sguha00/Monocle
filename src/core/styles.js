@@ -37,12 +37,11 @@ Monocle.Styles = {
   setX: function (elem, x) {
     var s = elem.style;
     if (typeof x == "number") { x += "px"; }
-    if (Monocle.Browser.env.supportsTransform3d) {
-      s.webkitTransform = "translate3d("+x+", 0, 0)";
-    } else {
-      s.webkitTransform = "translateX("+x+")";
-    }
-    s.MozTransform = s.OTransform = s.transform = "translateX("+x+")";
+    var val = Monocle.Browser.env.supportsTransform3d ?
+      'translate3d('+x+', 0, 0)' :
+      'translateX('+x+')';
+    val = (x == '0px') ? 'none' : val;
+    s.webkitTransform = s.MozTransform = s.OTransform = s.transform = val;
     return x;
   },
 
@@ -50,12 +49,11 @@ Monocle.Styles = {
   setY: function (elem, y) {
     var s = elem.style;
     if (typeof y == "number") { y += "px"; }
-    if (Monocle.Browser.env.supportsTransform3d) {
-      s.webkitTransform = "translate3d(0, "+y+", 0)";
-    } else {
-      s.webkitTransform = "translateY("+y+")";
-    }
-    s.MozTransform = s.OTransform = s.transform = "translateY("+y+")";
+    var val = Monocle.Browser.env.supportsTransform3d ?
+      'translate3d(0, '+y+', 0)' :
+      'translateY('+y+')';
+    val = (y == '0px') ? 'none' : val;
+    s.webkitTransform = s.MozTransform = s.OTransform = s.transform = val;
     return y;
   },
 
@@ -95,6 +93,7 @@ Monocle.Styles = {
 //
 Monocle.Styles.container = {
   "position": "absolute",
+  "overflow": "hidden",
   "top": "0",
   "left": "0",
   "bottom": "0",
@@ -106,6 +105,7 @@ Monocle.Styles.page = {
   "z-index": "1",
   "-webkit-user-select": "none",
   "-moz-user-select": "none",
+  "-ms-user-select": "none",
   "user-select": "none",
   "-webkit-transform": "translate3d(0,0,0)",
   "visibility": "visible"
@@ -137,6 +137,7 @@ Monocle.Styles.component = {
   "border": "none",
   "-webkit-user-select": "none",
   "-moz-user-select": "none",
+  "-ms-user-select": "none",
   "user-select": "none"
 }
 
@@ -152,7 +153,3 @@ Monocle.Styles.overlay = {
   "height": "100%",
   "z-index": "1000"
 }
-
-
-
-Monocle.pieceLoaded('core/styles');

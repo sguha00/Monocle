@@ -24,6 +24,9 @@
 //  stylesheet: A string of CSS rules to apply to the contents of each
 //    component loaded into the reader.
 //
+//  fontScale: a float to multiply against the default font-size of each
+//    element in each component.
+//
 //  place: A book locus for the page to open to when the reader is
 //    initialized. (See comments at Book#pageNumberAt for more about
 //    the locus option).
@@ -31,9 +34,6 @@
 //  systemId: the id for root elements of components, defaults to "RS:monocle"
 //
 Monocle.Reader = function (node, bookData, options, onLoadCallback) {
-  if (Monocle == this) {
-    return new Monocle.Reader(node, bookData, options, onLoadCallback);
-  }
 
   var API = { constructor: Monocle.Reader }
   var k = API.constants = API.constructor;
@@ -46,9 +46,6 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
 
     // DOM graph of factory-generated objects.
     graph: {},
-
-    // An array of style rules that are automatically applied to every page.
-    pageStylesheets: [],
 
     // Id applied to the HTML element of each component, can be used to scope
     // CSS rules.
@@ -89,22 +86,20 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
     if (typeof box == "string") { box = document.getElementById(box); }
     dom = API.dom = box.dom = new Monocle.Factory(box, 'box', 0, API);
 
+    API.billboard = new Monocle.Billboard(API);
+
     if (!Monocle.Browser.env.isCompatible()) {
       if (dispatchEvent("monocle:incompatible", {}, true)) {
-        // TODO: Something cheerier? More informative?
-        box.innerHTML = "Your browser is not compatible with Monocle.";
+        fatalSystemMessage(k.COMPATIBILITY_INFO);
       }
       return;
     }
 
-    dispatchEvent("monocle:initializing");
+    dispatchEvent("monocle:initializing", API);
 
-    var bk;
-    if (bookData) {
-      bk = new Monocle.Book(bookData);
-    } else {
-      bk = Monocle.Book.fromNodes([box.cloneNode(true)]);
-    }
+    bookData = bookData || Monocle.bookDataFromNodes([box.cloneNode(true)]);
+    var bk = new Monocle.Book(bookData, options.preloadWindow || 1);
+
     box.innerHTML = "";
 
     // Make sure the box div is absolutely or relatively positioned.
@@ -116,21 +111,26 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
     // Create the essential DOM elements.
     createReaderElements();
 
-    // Clamp page frames to a set of styles that reduce Monocle breakage.
-    clampStylesheets(options.stylesheet);
+    // Create the selection object.
+    API.selection = new Monocle.Selection(API);
+
+    // Create the formatting object.
+    API.formatting = new Monocle.Formatting(
+      API,
+      options.stylesheet,
+      options.fontScale
+    );
 
     primeFrames(options.primeURL, function () {
       // Make the reader elements look pretty.
       applyStyles();
-
-      listen('monocle:componentmodify', persistPageStylesOnComponentChange);
 
       p.flipper.listenForInteraction(options.panels);
 
       setBook(bk, options.place, function () {
         p.initialized = true;
         if (onLoadCallback) { onLoadCallback(API); }
-        dispatchEvent("monocle:loaded");
+        dispatchEvent("monocle:loaded", API);
       });
     });
   }
@@ -153,16 +153,12 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
 
   function attachFlipper(flipperClass) {
     if (!flipperClass) {
-      if (!Monocle.Browser.env.supportsColumns) {
-        flipperClass = Monocle.Flippers.Legacy;
-      } else if (Monocle.Browser.on.Kindle3) {
+      if (Monocle.Browser.renders.slow) {
         flipperClass = Monocle.Flippers.Instant;
+      } else {
+        flipperClass = Monocle.Flippers.Slider;
       }
-
-      flipperClass = flipperClass || Monocle.Flippers.Slider;
     }
-
-    if (!flipperClass) { throw("Flipper not found."); }
 
     p.flipper = new flipperClass(API, null, p.readerOptions);
   }
@@ -180,23 +176,9 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
       page.m.activeFrame.setAttribute('frameBorder', 0);
       page.m.activeFrame.setAttribute('scrolling', 'no');
       p.flipper.addPage(page);
-      // BROWSERHACK: hook up the iframe to the touchmonitor if it exists.
-      Monocle.Events.listenOnIframe(page.m.activeFrame);
     }
     dom.append('div', 'overlay');
-    dispatchEvent("monocle:loading");
-  }
-
-
-  function clampStylesheets(customStylesheet) {
-    var defCSS = k.DEFAULT_STYLE_RULES;
-    if (Monocle.Browser.env.floatsIgnoreColumns) {
-      defCSS.push("html#RS\\:monocle * { float: none !important; }");
-    }
-    p.defaultStyles = addPageStyles(defCSS, false);
-    if (customStylesheet) {
-      p.initialStyles = addPageStyles(customStylesheet, false);
-    }
+    dispatchEvent("monocle:loading", API);
   }
 
 
@@ -269,7 +251,12 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
           dispatchEvent('monocle:firstcomponentchange', evt.m);
           return (pageCount += 1) == p.flipper.pageCount;
         },
+        'monocle:componentfailed': function (evt) {
+          fatalSystemMessage(k.LOAD_FAILURE_INFO);
+          return true;
+        },
         'monocle:turn': function (evt) {
+          deafen('monocle:componentfailed', listener);
           callback();
           return true;
         }
@@ -291,6 +278,9 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
   // Attempts to restore the place we were up to in the book before the
   // reader was resized.
   //
+  // The delay ensures that if we get multiple calls to this function in
+  // a short period, we don't do lots of expensive recalculations.
+  //
   function resized() {
     if (!p.initialized) {
       console.warn('Attempt to resize book before initialization.');
@@ -300,18 +290,22 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
       return;
     }
     clearTimeout(p.resizeTimer);
-    p.resizeTimer = setTimeout(
-      function () {
-        lockFrameWidths();
-        recalculateDimensions(true);
-        dispatchEvent("monocle:resize");
-      },
-      k.RESIZE_DELAY
-    );
+    p.resizeTimer = Monocle.defer(performResize, k.RESIZE_DELAY);
   }
 
 
-  function recalculateDimensions(andRestorePlace) {
+  function performResize() {
+    lockFrameWidths();
+    recalculateDimensions(true, afterResized);
+  }
+
+
+  function afterResized() {
+    dispatchEvent('monocle:resize');
+  }
+
+
+  function recalculateDimensions(andRestorePlace, callback) {
     if (!p.book) { return; }
     dispatchEvent("monocle:recalculating");
 
@@ -321,15 +315,15 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
       var locus = { percent: place ? place.percentageThrough() : 0 };
     }
 
-    // Better to use an event? Or chaining consecutively?
     forEachPage(function (pageDiv) {
       pageDiv.m.activeFrame.m.component.updateDimensions(pageDiv);
     });
 
-    Monocle.defer(function () {
-      if (locus) { p.flipper.moveTo(locus); }
+    var cb = function () {
       dispatchEvent("monocle:recalculated");
-    });
+      Monocle.defer(callback);
+    }
+    Monocle.defer(function () { locus ? p.flipper.moveTo(locus, cb) : cb; });
   }
 
 
@@ -410,7 +404,7 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
   function addControl(ctrl, cType, options) {
     for (var i = 0; i < p.controls.length; ++i) {
       if (p.controls[i].control == ctrl) {
-        console.warn("Already added control: " + ctrl);
+        console.warn("Already added control: %o", ctrl);
         return;
       }
     }
@@ -496,6 +490,9 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
       var overlay = dom.find('overlay');
       overlay.style.display = "none";
       Monocle.Events.deafenForContact(overlay, overlay.listeners);
+      if (controlData.controlType != 'hud') {
+        dispatchEvent('monocle:modal:off');
+      }
     }
     controlData.hidden = true;
     if (ctrl.properties) {
@@ -524,6 +521,7 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
         }
       }
       overlay.style.display = "block";
+      dispatchEvent('monocle:modal:on');
     }
 
     for (var i = 0; i < controlData.elements.length; ++i) {
@@ -576,145 +574,10 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
   }
 
 
-  /* PAGE STYLESHEETS */
-
-  // API for adding a new stylesheet to all components. styleRules should be
-  // a string of CSS rules. restorePlace defaults to true.
-  //
-  // Returns a sheet index value that can be used with updatePageStyles
-  // and removePageStyles.
-  //
-  function addPageStyles(styleRules, restorePlace) {
-    return changingStylesheet(function () {
-      p.pageStylesheets.push(styleRules);
-      var sheetIndex = p.pageStylesheets.length - 1;
-
-      for (var i = 0; i < p.flipper.pageCount; ++i) {
-        var doc = dom.find('component', i).contentDocument;
-        addPageStylesheet(doc, sheetIndex);
-      }
-      return sheetIndex;
-    }, restorePlace);
-  }
-
-
-  // API for updating the styleRules in an existing page stylesheet across
-  // all components. Takes a sheet index value obtained via addPageStyles.
-  //
-  function updatePageStyles(sheetIndex, styleRules, restorePlace) {
-    return changingStylesheet(function () {
-      p.pageStylesheets[sheetIndex] = styleRules;
-      if (typeof styleRules.join == "function") {
-        styleRules = styleRules.join("\n");
-      }
-      for (var i = 0; i < p.flipper.pageCount; ++i) {
-        var doc = dom.find('component', i).contentDocument;
-        var styleTag = doc.getElementById('monStylesheet'+sheetIndex);
-        if (!styleTag) {
-          console.warn('No such stylesheet: ' + sheetIndex);
-          return;
-        }
-        if (styleTag.styleSheet) {
-          styleTag.styleSheet.cssText = styleRules;
-        } else {
-          styleTag.replaceChild(
-            doc.createTextNode(styleRules),
-            styleTag.firstChild
-          );
-        }
-      }
-    }, restorePlace);
-  }
-
-
-  // API for removing a page stylesheet from all components. Takes a sheet
-  // index value obtained via addPageStyles.
-  //
-  function removePageStyles(sheetIndex, restorePlace) {
-    return changingStylesheet(function () {
-      p.pageStylesheets[sheetIndex] = null;
-      for (var i = 0; i < p.flipper.pageCount; ++i) {
-        var doc = dom.find('component', i).contentDocument;
-        var styleTag = doc.getElementById('monStylesheet'+sheetIndex);
-        styleTag.parentNode.removeChild(styleTag);
-      }
-    }, restorePlace);
-  }
-
-
-  // Called when a page changes its component. Injects our current page
-  // stylesheets into the new component.
-  //
-  function persistPageStylesOnComponentChange(evt) {
-    var doc = evt.m['document'];
-    doc.documentElement.id = p.systemId;
-    for (var i = 0; i < p.pageStylesheets.length; ++i) {
-      if (p.pageStylesheets[i]) {
-        addPageStylesheet(doc, i);
-      }
-    }
-  }
-
-
-  // Wraps all API-based stylesheet changes (add, update, remove) in a
-  // brace of custom events (stylesheetchanging/stylesheetchange), and
-  // recalculates component dimensions if specified (default to true).
-  //
-  function changingStylesheet(callback, restorePlace) {
-    restorePlace = (restorePlace === false) ? false : true;
-    if (restorePlace) {
-      dispatchEvent("monocle:stylesheetchanging", {});
-    }
-    var result = callback();
-    if (restorePlace) {
-      recalculateDimensions(true);
-      Monocle.defer(
-        function () { dispatchEvent("monocle:stylesheetchange", {}); }
-      );
-    } else {
-      recalculateDimensions(false);
-    }
-    return result;
-  }
-
-
-  // Private method for adding a stylesheet to a component. Used by
-  // addPageStyles.
-  //
-  function addPageStylesheet(doc, sheetIndex) {
-    var styleRules = p.pageStylesheets[sheetIndex];
-
-    if (!styleRules) {
-      return;
-    }
-
-    var head = doc.getElementsByTagName('head')[0];
-    if (!head) {
-      head = doc.createElement('head');
-      doc.documentElement.appendChild(head);
-    }
-
-    if (typeof styleRules.join == "function") {
-      styleRules = styleRules.join("\n");
-    }
-
-    var styleTag = doc.createElement('style');
-    styleTag.type = 'text/css';
-    styleTag.id = "monStylesheet"+sheetIndex;
-    if (styleTag.styleSheet) {
-      styleTag.styleSheet.cssText = styleRules;
-    } else {
-      styleTag.appendChild(doc.createTextNode(styleRules));
-    }
-
-    head.appendChild(styleTag);
-
-    return styleTag;
-  }
-
-
   function visiblePages() {
-    return p.flipper.visiblePages ? p.flipper.visiblePages() : [dom.find('page')];
+    return p.flipper.visiblePages ?
+      p.flipper.visiblePages() :
+      [dom.find('page')];
   }
 
 
@@ -726,11 +589,40 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
   }
 
 
+  /* The Reader PageStyles API is deprecated - it has moved to Formatting */
+
+  function addPageStyles(styleRules, restorePlace) {
+    console.deprecation("Use reader.formatting.addPageStyles instead.");
+    return API.formatting.addPageStyles(styleRules, restorePlace);
+  }
+
+
+  function updatePageStyles(sheetIndex, styleRules, restorePlace) {
+    console.deprecation("Use reader.formatting.updatePageStyles instead.");
+    return API.formatting.updatePageStyles(sheetIndex, styleRules, restorePlace);
+  }
+
+
+  function removePageStyles(sheetIndex, restorePlace) {
+    console.deprecation("Use reader.formatting.removePageStyles instead.");
+    return API.formatting.removePageStyles(sheetIndex, restorePlace);
+  }
+
+
+  function fatalSystemMessage(msg) {
+    var info = dom.make('div', 'book_fatality', { html: msg });
+    var box = dom.find('box');
+    var bbOrigin = [box.offsetWidth / 2, box.offsetHeight / 2];
+    API.billboard.show(info, { closeButton: false, from: bbOrigin });
+  }
+
+
   API.getBook = getBook;
   API.getPlace = getPlace;
   API.moveTo = moveTo;
   API.skipToChapter = skipToChapter;
   API.resized = resized;
+  API.recalculateDimensions = recalculateDimensions;
   API.addControl = addControl;
   API.hideControl = hideControl;
   API.showControl = showControl;
@@ -738,10 +630,12 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
   API.dispatchEvent = dispatchEvent;
   API.listen = listen;
   API.deafen = deafen;
+  API.visiblePages = visiblePages;
+
+  // Deprecated!
   API.addPageStyles = addPageStyles;
   API.updatePageStyles = updatePageStyles;
   API.removePageStyles = removePageStyles;
-  API.visiblePages = visiblePages;
 
   initialize();
 
@@ -749,9 +643,10 @@ Monocle.Reader = function (node, bookData, options, onLoadCallback) {
 }
 
 
-Monocle.Reader.RESIZE_DELAY = 100;
+Monocle.Reader.RESIZE_DELAY = Monocle.Browser.renders.slow ? 500 : 100;
 Monocle.Reader.DEFAULT_SYSTEM_ID = 'RS:monocle'
 Monocle.Reader.DEFAULT_CLASS_PREFIX = 'monelem_'
+<<<<<<< HEAD
 Monocle.Reader.DEFAULT_STYLE_RULES = [
   "html#RS\\:monocle * {" +
     "-webkit-font-smoothing: subpixel-antialiased;" +
@@ -777,3 +672,14 @@ Monocle.Reader.DEFAULT_STYLE_RULES = [
 ]
 
 Monocle.pieceLoaded('core/reader');
+=======
+Monocle.Reader.DEFAULT_STYLE_RULES = Monocle.Formatting.DEFAULT_STYLE_RULES;
+Monocle.Reader.COMPATIBILITY_INFO =
+  "<h1>Incompatible browser</h1>"+
+  "<p>Unfortunately, your browser isn't able to display this book. "+
+  "If possible, try again in another browser or on another device.</p>";
+Monocle.Reader.LOAD_FAILURE_INFO =
+  "<h1>Book could not be loaded</h1>"+
+  "<p>Sorry, parts of the book could not be retrieved.<br />"+
+  "Please check your connection and refresh to try again.</p>";
+>>>>>>> upstream/master

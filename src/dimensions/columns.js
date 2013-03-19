@@ -38,7 +38,7 @@ Monocle.Dimensions.Columns = function (pageDiv) {
     rules += Monocle.Browser.css.toCSSDeclaration('column-width', pdims.col+'px');
     rules += Monocle.Browser.css.toCSSDeclaration('column-gap', k.GAP+'px');
     rules += Monocle.Browser.css.toCSSDeclaration('column-fill', 'auto');
-    rules += Monocle.Browser.css.toCSSDeclaration('transform', 'translateX(0)');
+    rules += Monocle.Browser.css.toCSSDeclaration('transform', 'none');
 
     if (Monocle.Browser.env.forceColumns && ce.scrollHeight > pdims.height) {
       rules += Monocle.Styles.rulesToString(k.STYLE['column-force']);
@@ -50,6 +50,11 @@ Monocle.Dimensions.Columns = function (pageDiv) {
     if (ce.style.cssText != rules) {
       // Update offset because we're translating to zero.
       p.page.m.offset = 0;
+
+      // IE10 hack.
+      if (Monocle.Browser.env.documentElementHasScrollbars) {
+        ce.ownerDocument.documentElement.style.overflow = 'hidden';
+      }
 
       // Apply body style changes.
       ce.style.cssText = rules;
@@ -92,7 +97,7 @@ Monocle.Dimensions.Columns = function (pageDiv) {
     var elem = p.page.m.sheafDiv;
     var w = elem.clientWidth;
     if (elem.getBoundingClientRect) { w = elem.getBoundingClientRect().width; }
-    w = Math.round(w);
+    if (Monocle.Browser.env.roundPageDimensions) { w = Math.round(w); }
     return { col: w, width: w + k.GAP, height: elem.clientHeight }
   }
 
@@ -208,5 +213,3 @@ Monocle.Dimensions.Columns.STYLE = {
     "overflow": "hidden"
   }
 }
-
-Monocle.pieceLoaded("dimensions/columns");

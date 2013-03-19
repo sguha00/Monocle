@@ -74,6 +74,10 @@ li.monelem_controls_contents_chapter_active {
   background-repeat: no-repeat;
   background-position: center center;
 }
+.monelem_controls_spinner_anim.monelem_dormant {
+  width: 0;
+  height: 0;
+}
 
 
 /* Scrubber */
@@ -142,12 +146,12 @@ div.monelem_controls_stencil_container {
   height: 0;
 }
 
-a.monelem_controls_stencil_cutout {
+.monelem_controls_stencil_mask {
   display: block;
   position: absolute;
 }
 
-div.monelem_controls_stencil_highlighted a {
+div.monelem_controls_stencil_highlighted .monelem_controls_stencil_mask {
   background: rgba(0,0,255,0.15);
 }
 

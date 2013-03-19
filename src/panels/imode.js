@@ -25,7 +25,7 @@ Monocle.Panels.IMode = function (flipper, evtCallbacks) {
       p.reader.addControl(p.panels[dir]);
       p.divs[dir] = p.panels[dir].properties.div;
       p.panels[dir].listenTo(evtCallbacks);
-      p.panels[dir].properties.direction = flipper.constants[dir.toUpperCase()];
+      p.panels[dir].setDirection(flipper.constants[dir.toUpperCase()]);
       p.divs[dir].style.width = "33%";
       p.divs[dir].style[dir == "forwards" ? "right" : "left"] = 0;
     }
@@ -86,9 +86,6 @@ Monocle.Panels.IMode = function (flipper, evtCallbacks) {
     p.reader.showControl(p.toggleIcon);
 
     p.interactive = true;
-    if (flipper.interactiveMode) {
-      flipper.interactiveMode(true);
-    }
   }
 
 
@@ -99,7 +96,7 @@ Monocle.Panels.IMode = function (flipper, evtCallbacks) {
 
     p.panels.central.contract();
 
-    deselect();
+    p.reader.selection.deselect();
 
     startCameo(function () {
       p.divs.forwards.style.width = "33%";
@@ -110,9 +107,6 @@ Monocle.Panels.IMode = function (flipper, evtCallbacks) {
     p.reader.hideControl(p.toggleIcon);
 
     p.interactive = false;
-    if (flipper.interactiveMode) {
-      flipper.interactiveMode(false);
-    }
   }
 
 
@@ -172,18 +166,6 @@ Monocle.Panels.IMode = function (flipper, evtCallbacks) {
   }
 
 
-  function deselect() {
-    for (var i = 0, cmpt; cmpt = p.reader.dom.find('component', i); ++i) {
-      var sel = cmpt.contentWindow.getSelection() || cmpt.contentDocument.selection;
-      //if (sel.collapse) { sel.collapse(true); }
-      if (sel.removeAllRanges) { sel.removeAllRanges(); }
-      if (sel.empty) { sel.empty(); }
-      cmpt.contentDocument.body.scrollLeft = 0;
-      cmpt.contentDocument.body.scrollTop = 0;
-    }
-  }
-
-
   API.toggle = toggle;
   API.modeOn = modeOn;
   API.modeOff = modeOff;
@@ -196,5 +178,3 @@ Monocle.Panels.IMode = function (flipper, evtCallbacks) {
 
 Monocle.Panels.IMode.CAMEO_DURATION = 250;
 Monocle.Panels.IMode.LINGER_DURATION = 250;
-
-Monocle.pieceLoaded('panels/imode');
