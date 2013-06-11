@@ -120,9 +120,14 @@ Monocle.Dimensions.Columns = function (pageDiv) {
   //
   function translateToLocus(locus, transition) {
     var offset = locusToOffset(locus);
-    p.page.m.offset = offset;
-    translateToOffset(offset, transition);
-    return offset;
+    var oldOffset = p.page.m.offset;
+    if (offset != oldOffset) {
+      p.page.m.offset = offset;
+      translateToOffset(offset, transition);
+      return offset;
+    } else {
+      return -1;
+    }
   }
 
 

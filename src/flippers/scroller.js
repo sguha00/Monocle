@@ -81,11 +81,9 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
       Monocle.defer(turned);
     } else if (Monocle.Browser.env.supportsTransition) {
       // Native animation.
-      if (getPlace().pageNumber() == locus.page) {
-        // poage is not changing so afterTransition event won't be fired
-        turned();
+      if (dims.translateToLocus(locus, p.duration+"ms ease-in 0ms") == -1) {
+        Monocle.defer(turned);
       } else {
-        dims.translateToLocus(locus, p.duration+"ms ease-in 0ms");
         Monocle.Events.afterTransition(bdy, turned);
       }
     } else {
