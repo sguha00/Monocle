@@ -73,8 +73,13 @@ Monocle.Flippers.Scroller = function (reader, setPageFn) {
       Monocle.defer(turned);
     } else if (Monocle.Browser.env.supportsTransition) {
       // Native animation.
-      dims.translateToLocus(locus, p.duration+"ms ease-in 0ms");
-      Monocle.Events.afterTransition(bdy, turned);
+      if (getPlace().pageNumber() == locus.page) {
+        // poage is not changing so afterTransition event won't be fired
+        turned();
+      } else {
+        dims.translateToLocus(locus, p.duration+"ms ease-in 0ms");
+        Monocle.Events.afterTransition(bdy, turned);
+      }
     } else {
       // Old-school JS animation.
       var x = dims.locusToOffset(locus);
