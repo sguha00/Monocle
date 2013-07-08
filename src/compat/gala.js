@@ -251,7 +251,7 @@ Gala.onContact = function (elem, fns, useCapture, initCallback) {
       'touchend': touchInit,
       'touchcancel': touchInit,
       'mousedown': mouseInit,
-      'mousemove': mouseInit,
+      // 'mousemove': mouseInit,
       'mouseup': mouseInit,
       'mouseout': mouseInit
     }
